@@ -167,10 +167,6 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 				label += " " + msg
 			}
 			serverLog("status", label)
-		case "progress":
-			if l, ok := ev["label"].(string); ok {
-				serverLog("status", l)
-			}
 		case "done":
 			if v, ok := ev["bytes"].(float64); ok {
 				doneBytes = int64(v)
