@@ -15,6 +15,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/schollz/progressbar/v3"
 
 	"certsign/internal/config"
 )
@@ -79,10 +82,28 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		return ExitLocalError, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server+"/sign", buf)
+	// 上传进度条.
+	bodyLen := int64(buf.Len())
+	var bodyReader io.Reader = buf
+	if !opts.Quiet {
+		bar := progressbar.NewOptions64(bodyLen,
+			progressbar.OptionSetDescription("上传中..."),
+			progressbar.OptionSetWriter(os.Stderr),
+			progressbar.OptionSetWidth(20),
+			progressbar.OptionShowBytes(true),
+			progressbar.OptionThrottle(50*time.Millisecond),
+			progressbar.OptionOnCompletion(func() {
+				fmt.Fprintln(os.Stderr)
+			}),
+		)
+		bodyReader = io.TeeReader(buf, bar)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server+"/sign", bodyReader)
 	if err != nil {
 		return ExitLocalError, err
 	}
+	req.ContentLength = bodyLen
 	req.Header.Set("Content-Type", header)
 	req.Header.Set("Authorization", "Bearer "+cfg.Token)
 
@@ -139,7 +160,7 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		}
 		switch ev["type"] {
 		case "log":
-			logOut.write(ev["stream"], ev["line"])
+			logOut.write(ev["line"])
 		case "status":
 			logOut.status(ev["phase"], ev["msg"])
 		case "progress":
@@ -166,7 +187,23 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		return ExitServerError, errors.New("no done event")
 	}
 
-	if _, err := io.CopyN(&artifact, br, doneBytes); err != nil {
+	// 下载进度条.
+	var artifactReader io.Reader = br
+	if !opts.Quiet {
+		bar := progressbar.NewOptions64(doneBytes,
+			progressbar.OptionSetDescription("下载中..."),
+			progressbar.OptionSetWriter(os.Stderr),
+			progressbar.OptionSetWidth(20),
+			progressbar.OptionShowBytes(true),
+			progressbar.OptionThrottle(50*time.Millisecond),
+			progressbar.OptionOnCompletion(func() {
+				fmt.Fprintln(os.Stderr)
+			}),
+		)
+		artifactReader = io.TeeReader(br, bar)
+	}
+
+	if _, err := io.CopyN(&artifact, artifactReader, doneBytes); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded {
 			return ExitTimeout, err
 		}
@@ -182,7 +219,7 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		return ExitWriteError, err
 	}
 	if !opts.Quiet {
-		fmt.Fprintf(os.Stderr, "certsign: 已签名 %s (%d bytes)\n", out, artifact.Len())
+		fmt.Fprintf(os.Stderr, "certsign: 已签名 %s (%s)\n", out, formatBytes(int64(artifact.Len())))
 	}
 	return ExitOK, nil
 }
@@ -220,6 +257,41 @@ func truncate(s string, n int) string {
 	return s[len(s)-n:]
 }
 
+// formatBytes returns a human-readable size string (e.g. "10.2 MB").
+func formatBytes(n int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+	)
+	switch {
+	case n >= GB:
+		return fmt.Sprintf("%.1f GB", float64(n)/float64(GB))
+	case n >= MB:
+		return fmt.Sprintf("%.1f MB", float64(n)/float64(MB))
+	case n >= KB:
+		return fmt.Sprintf("%.1f KB", float64(n)/float64(KB))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
+}
+
+// phaseLabel converts a server status phase to a Chinese label.
+func phaseLabel(phase string) string {
+	switch phase {
+	case "uploaded":
+		return "上传完成"
+	case "login":
+		return "登录中..."
+	case "signing":
+		return "签名中..."
+	case "relogin":
+		return "重新登录中..."
+	default:
+		return phase
+	}
+}
+
 // logWriter 按 --quiet 控制是否输出流式日志到 stderr.
 type logWriter struct {
 	quiet bool
@@ -229,25 +301,25 @@ func newLogWriter(quiet bool) *logWriter {
 	return &logWriter{quiet: quiet}
 }
 
-func (w *logWriter) write(stream any, line any) {
+func (w *logWriter) write(line any) {
 	if w.quiet {
 		return
 	}
 	l, _ := line.(string)
-	if s, _ := stream.(string); s == "stdout" {
-		fmt.Fprintln(os.Stdout, l)
-	} else {
-		fmt.Fprintln(os.Stderr, l)
-	}
+	ts := time.Now().Format("15:04:05")
+	fmt.Fprintf(os.Stderr, "%s [signtool] %s\n", ts, l)
 }
 
 func (w *logWriter) status(label, msg any) {
 	if w.quiet || label == nil {
 		return
 	}
+	phase, _ := label.(string)
+	prefix := phaseLabel(phase)
+	ts := time.Now().Format("15:04:05")
 	if msg != nil {
-		fmt.Fprintf(os.Stderr, "[%v] %v\n", label, msg)
+		fmt.Fprintf(os.Stderr, "%s [%s] %v\n", ts, prefix, msg)
 	} else {
-		fmt.Fprintf(os.Stderr, "[%v]\n", label)
+		fmt.Fprintf(os.Stderr, "%s [%s]\n", ts, prefix)
 	}
 }

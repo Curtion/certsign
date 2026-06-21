@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -78,18 +80,23 @@ type Manager struct {
 	simply SimplySignClient
 	signer Signer
 	totp   totp.Config
+	logger *slog.Logger
 }
 
 // New 创建 Manager. appCtx 应为应用级 ctx, 用于驱动 autologin/Close.
-func New(simply SimplySignClient, signer Signer, totpCfg totp.Config, appCtx context.Context) *Manager {
+func New(simply SimplySignClient, signer Signer, totpCfg totp.Config, appCtx context.Context, logger *slog.Logger) *Manager {
 	if appCtx == nil {
 		appCtx = context.Background()
+	}
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
 	return &Manager{
 		simply: simply,
 		signer: signer,
 		totp:   totpCfg,
 		appCtx: appCtx,
+		logger: logger,
 	}
 }
 
@@ -153,6 +160,7 @@ func (m *Manager) Sign(ctx context.Context, srcPath string, log func(signtool.Lo
 	if status != nil {
 		status(Event{Phase: "signing"})
 	}
+	m.logger.Info("开始签名")
 	res, err := m.signer.Sign(ctx, srcPath, log)
 	if err != nil {
 		return nil, err
@@ -166,6 +174,7 @@ func (m *Manager) Sign(ctx context.Context, srcPath string, log func(signtool.Lo
 		if status != nil {
 			status(Event{Phase: "relogin", Msg: "证书缺失, 重新登录中"})
 		}
+		m.logger.Warn("证书缺失, 触发重登录")
 		m.setState(Stale)
 		if m.simply != nil {
 			_ = m.simply.Close(m.appCtx) // 尽力关闭, 失败不阻塞重试.
@@ -205,6 +214,7 @@ func (m *Manager) ensureLoggedIn(ctx context.Context, status func(Event), forceS
 			return nil, nil
 		}
 		m.setState(LoggingIn)
+		m.logger.Info("开始登录")
 		if err := m.doAutologin(ctx); err != nil {
 			m.mu.Lock()
 			if m.logged {
@@ -213,9 +223,11 @@ func (m *Manager) ensureLoggedIn(ctx context.Context, status func(Event), forceS
 				m.state = Uninit
 			}
 			m.mu.Unlock()
+			m.logger.Error("登录失败", "err", err)
 			return nil, err
 		}
 		m.setState(LoggedIn)
+		m.logger.Info("登录成功")
 		return nil, nil
 	})
 	return err
@@ -238,6 +250,7 @@ func (m *Manager) doAutologin(ctx context.Context) error {
 		if alive {
 			return nil
 		}
+		m.logger.Debug("OTP 尝试未命中", "counter", c)
 	}
 	return errors.New("autologin 失败: 三个 TOTP 值均无效")
 }

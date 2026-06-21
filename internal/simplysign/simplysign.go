@@ -6,6 +6,8 @@ package simplysign
 import (
 	"context"
 	"fmt"
+	"io"
+	"log/slog"
 	"os/exec"
 	"time"
 
@@ -20,13 +22,18 @@ type Manager struct {
 	exe           string
 	email         string
 	SettleTimeout time.Duration
+	logger        *slog.Logger
 }
 
-func New(cfg config.SimplySignConfig) *Manager {
+func New(cfg config.SimplySignConfig, logger *slog.Logger) *Manager {
 	m := &Manager{
 		exe:           cfg.Exe,
 		email:         cfg.Email,
 		SettleTimeout: DefaultSettleTimeout,
+		logger:        logger,
+	}
+	if m.logger == nil {
+		m.logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	}
 	if cfg.SettleTimeout > 0 {
 		m.SettleTimeout = cfg.SettleTimeout
@@ -38,6 +45,7 @@ func New(cfg config.SimplySignConfig) *Manager {
 // alive=true 表示进程存活到窗口结束 (登录成功); alive=false 表示进程退出 (失败).
 // 用 exec.Command 而非 CommandContext, 避免成功路径的进程被 ctx 误杀.
 func (m *Manager) Autologin(ctx context.Context, otp string) (alive bool, err error) {
+	m.logger.Info("启动 SimplySign autologin")
 	cmd := exec.Command(m.exe, "/autologin", m.email, otp)
 	if err := cmd.Start(); err != nil {
 		return false, fmt.Errorf("simplysign: 启动 autologin 失败: %w", err)
@@ -54,12 +62,15 @@ func (m *Manager) Autologin(ctx context.Context, otp string) (alive bool, err er
 
 	select {
 	case <-waitCh:
+		m.logger.Debug("autologin 进程退出")
 		return false, nil
 	case <-settle.C:
+		m.logger.Info("autologin settle 通过")
 		return true, nil
 	case <-ctx.Done():
 		_ = cmd.Process.Kill()
 		<-waitCh
+		m.logger.Warn("autologin 上下文取消", "err", ctx.Err())
 		return false, ctx.Err()
 	}
 }

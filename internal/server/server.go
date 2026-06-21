@@ -172,6 +172,8 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logger.Info("文件上传完成", "filename", name, "size", size, "remote", r.RemoteAddr)
+
 	// 进入 ndjson 流 (首条 Write 隐式触发 200).
 	flusher, _ := w.(http.Flusher)
 	nw := &ndjsonWriter{w: w, flusher: flusher}
@@ -199,7 +201,9 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	signStart := time.Now()
 	res, signErr := s.sm.Sign(r.Context(), stagedPath, logCb, statusCb)
+	signElapsed := time.Since(signStart).Milliseconds()
 	if signErr != nil {
 		s.writeSignError(nw, signErr)
 		s.logger.Error("签名失败", "err", signErr, "remote", r.RemoteAddr)
@@ -229,6 +233,19 @@ func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fi, _ := artifact.Stat()
+
+	s.logger.Info("签名完成",
+		"filename", name,
+		"signed_size", fi.Size(),
+		"elapsed_ms", signElapsed,
+		"remote", r.RemoteAddr,
+	)
+
+	s.logger.Info("开始传输签名文件",
+		"filename", name,
+		"size", fi.Size(),
+		"remote", r.RemoteAddr,
+	)
 
 	nw.event(map[string]any{"type": "done", "bytes": fi.Size()})
 	if _, err := io.Copy(w, artifact); err != nil {

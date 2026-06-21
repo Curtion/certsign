@@ -48,13 +48,13 @@ func runServe(args []string) int {
 	logger.Info("配置已加载", "summary", cfg.RedactedSummary())
 
 	signer := signtool.New(cfg.Signing)
-	simply := simplysign.New(cfg.SimplySign)
+	simply := simplysign.New(cfg.SimplySign, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	// 注入 app 级 ctx, 避免 per-request ctx 取消影响登录/Close.
-	sm := session.New(simply, signer, cfg.SimplySign.TOTP, ctx)
+	sm := session.New(simply, signer, cfg.SimplySign.TOTP, ctx, logger)
 
 	srv := server.New(cfg.Server, sm, logger)
 	if err := srv.Run(ctx, *shutdownTimeout); err != nil {
