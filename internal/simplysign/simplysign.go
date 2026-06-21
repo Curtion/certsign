@@ -1,0 +1,80 @@
+// Package simplysign 管理 Certum SimplySignDesktop.exe.
+//
+// Autologin 启动 /autologin 触发器进程, 在 SettleTimeout 窗口内观察存活状态.
+// 实测该进程即为常驻主进程: 登录成功永不退出, OTP 错误几秒后退出.
+// 因此判据: 进程在 settle 窗口内退出 = 失败; 存活到窗口结束 = 成功.
+// 用后台 goroutine reap (select 等待), 不再轮询进程表.
+package simplysign
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"time"
+
+	"certsign/internal/config"
+)
+
+// DefaultSettleTimeout 是判定登录成功的默认 settle 窗口.
+const DefaultSettleTimeout = 10 * time.Second
+
+// Manager 管理 SimplySign 会话的启动和关闭.
+type Manager struct {
+	exe           string
+	email         string
+	SettleTimeout time.Duration
+}
+
+func New(cfg config.SimplySignConfig) *Manager {
+	m := &Manager{
+		exe:           cfg.Exe,
+		email:         cfg.Email,
+		SettleTimeout: DefaultSettleTimeout,
+	}
+	if cfg.SettleTimeout > 0 {
+		m.SettleTimeout = cfg.SettleTimeout
+	}
+	return m
+}
+
+// Autologin 启动 SimplySignDesktop /autologin, 在 settle 窗口内判断登录成败.
+// alive=true 表示进程存活到窗口结束 (登录成功); alive=false 表示进程退出 (失败).
+// 用 exec.Command 而非 CommandContext, 避免成功路径的进程被 ctx 误杀.
+func (m *Manager) Autologin(ctx context.Context, otp string) (alive bool, err error) {
+	cmd := exec.Command(m.exe, "/autologin", m.email, otp)
+	if err := cmd.Start(); err != nil {
+		return false, fmt.Errorf("simplysign: 启动 autologin 失败: %w", err)
+	}
+
+	// 后台 reap, 不阻塞主流程.
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
+	settle := time.NewTimer(m.SettleTimeout)
+	defer settle.Stop()
+
+	select {
+	case <-waitCh:
+		return false, nil
+	case <-settle.C:
+		return true, nil
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		<-waitCh
+		return false, ctx.Err()
+	}
+}
+
+// Close 启动 SimplySignDesktop /close 销毁云证书会话. 阻塞至命令返回.
+func (m *Manager) Close(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, m.exe, "/close")
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("simplysign: 启动 /close 失败: %w", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("simplysign: /close 失败: %w", err)
+	}
+	return nil
+}
