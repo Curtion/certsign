@@ -1,5 +1,6 @@
 // Package session 管理 SimplySign 会话: 惰性 autologin (三值 TOTP 容错),
-// singleflight 登录去重, 签名互斥, 证书缺失自动重登. 状态转换由 Sign 请求驱动.
+// singleflight 登录去重, 签名互斥, 任意 signtool 失败自动重登重试一次.
+// 状态转换由 Sign 请求驱动.
 package session
 
 import (
@@ -169,31 +170,31 @@ func (m *Manager) Sign(ctx context.Context, srcPath string, log func(signtool.Lo
 		return res, nil
 	}
 
-	// signtool 失败且匹配证书缺失特征: 重新登录后重试一次.
-	if signtool.MatchCertMissing(res.StderrTail) {
-		if status != nil {
-			status(Event{Phase: "relogin", Msg: "证书缺失, 重新登录中"})
-		}
-		m.logger.Warn("证书缺失, 触发重登录")
-		m.setState(Stale)
-		if m.simply != nil {
-			_ = m.simply.Close(m.appCtx) // 尽力关闭, 失败不阻塞重试.
-		}
-		if err := m.ensureLoggedIn(m.appCtx, status, true); err != nil {
-			return nil, fmt.Errorf("session: re-login after cert error: %w", err)
-		}
-		// 重登也可能耗时, 再检查 per-request ctx.
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		res2, err := m.signer.Sign(ctx, srcPath, log)
-		if err != nil {
-			return nil, err
-		}
-		return res2, nil
+	// signtool 任何非零退出都视为可能与会话相关: 关闭旧会话, 重新登录后重试一次.
+	// 能走到这里的失败都已经过 signtool.Sign 的 error 分支过滤 (exe 找不到 / 启动失败 /
+	// ctx 取消等不会进 ExitCode 分支), 因此重登对证书/会话类失效有效,
+	// 对文件占用 / 时间戳服务器等非会话错误无害 (第二次签名仍会失败, 透传给调用方).
+	// 只重试一次, 避免在持续性故障下放大 OTP 消耗与延迟.
+	if status != nil {
+		status(Event{Phase: "relogin", Msg: "签名失败, 重新登录后重试"})
 	}
-
-	return res, nil
+	m.logger.Warn("signtool 失败, 触发重登录重试", "exit_code", res.ExitCode, "stderr_tail", res.StderrTail)
+	m.setState(Stale)
+	if m.simply != nil {
+		_ = m.simply.Close(m.appCtx) // 尽力关闭, 失败不阻塞重试.
+	}
+	if err := m.ensureLoggedIn(m.appCtx, status, true); err != nil {
+		return nil, fmt.Errorf("session: re-login after sign failure: %w", err)
+	}
+	// 重登也可能耗时, 再检查 per-request ctx.
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	res2, err := m.signer.Sign(ctx, srcPath, log)
+	if err != nil {
+		return nil, err
+	}
+	return res2, nil
 }
 
 // ensureLoggedIn 触发 autologin (singleflight 去重).

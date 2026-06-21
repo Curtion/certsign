@@ -277,9 +277,11 @@ func TestSign_MissingFile(t *testing.T) {
 	}
 }
 
-func TestSign_SigntoolFailure_NoRetry(t *testing.T) {
-	ts, signer, _, token := setup(t, []fakeResult{
-		{exitCode: 1, stderr: "totally unrelated error"},
+func TestSign_SigntoolFailure_RetriesAndForwardsSecondResult(t *testing.T) {
+	// 任意 signtool 失败都会触发重登重试一次; 两次都失败时透传第二次结果.
+	ts, signer, simply, token := setup(t, []fakeResult{
+		{exitCode: 1, stderr: "first failure"},
+		{exitCode: 2, stderr: "second failure"},
 	})
 	body, ct := uploadBody(t, "app.bin", "PAYLOAD")
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/sign", body)
@@ -300,17 +302,20 @@ func TestSign_SigntoolFailure_NoRetry(t *testing.T) {
 	if last["phase"] != "signtool" {
 		t.Errorf("phase: %v", last["phase"])
 	}
-	if last["exit_code"].(float64) != 1 {
-		t.Errorf("exit_code: %v", last["exit_code"])
+	if last["exit_code"].(float64) != 2 {
+		t.Errorf("exit_code: %v, want 2 (透传第二次)", last["exit_code"])
 	}
-	if !strings.Contains(last["stderr_tail"].(string), "unrelated error") {
-		t.Errorf("stderr_tail: %v", last["stderr_tail"])
+	if !strings.Contains(last["stderr_tail"].(string), "second failure") {
+		t.Errorf("stderr_tail: %v, want second failure", last["stderr_tail"])
 	}
 	if raw != nil {
 		t.Errorf("no artifact expected on error, got %d bytes", len(raw))
 	}
-	if signer.calls != 1 {
-		t.Errorf("no retry expected, signer calls: %d", signer.calls)
+	if signer.calls != 2 {
+		t.Errorf("signer calls: %d, want 2 (重试一次)", signer.calls)
+	}
+	if simply.closeN != 1 {
+		t.Errorf("close calls: %d, want 1", simply.closeN)
 	}
 }
 

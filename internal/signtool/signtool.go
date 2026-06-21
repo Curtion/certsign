@@ -4,7 +4,6 @@ package signtool
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -171,20 +170,4 @@ func copyFile(src, dst string) error {
 	defer out.Close()
 	_, err = io.Copy(out, in)
 	return err
-}
-
-// MatchCertMissing 判断 stderr 尾部是否含证书缺失特征.
-func MatchCertMissing(stderrTail string) bool {
-	low := bytes.ToLower([]byte(stderrTail))
-	for _, sig := range [][]byte{
-		[]byte("cannot find the specified certificate"),
-		[]byte("signercert"),
-		[]byte("0x800b010a"),
-		[]byte("0x80092004"),
-	} {
-		if bytes.Contains(low, sig) {
-			return true
-		}
-	}
-	return false
 }

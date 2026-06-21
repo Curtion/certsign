@@ -241,9 +241,9 @@ func TestSign_AllThreeFail_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestSign_CertMissing_TriggersReloginAndRetry(t *testing.T) {
+func TestSign_AnyFailure_TriggersReloginAndRetry(t *testing.T) {
 	signer := &fakeSigner{script: []fakeResult{
-		{exitCode: 1, stderr: "Cannot find the specified certificate foo"},
+		{exitCode: 1, stderr: "SignTool Error: No certificates were found that met all the given criteria."},
 		{}, // 重试成功
 	}}
 	t0 := time.Now().Unix()
@@ -273,9 +273,11 @@ func TestSign_CertMissing_TriggersReloginAndRetry(t *testing.T) {
 	}
 }
 
-func TestSign_NonCertFailure_NoRelogin(t *testing.T) {
+func TestSign_AnyFailure_NonCertErrorAlsoRelogins(t *testing.T) {
+	// 非证书/会话类错误 (如文件占用) 也应触发重登, 因为重登无害, 且避免漏判会话失效.
 	signer := &fakeSigner{script: []fakeResult{
 		{exitCode: 1, stderr: "some unrelated error"},
+		{}, // 重试成功
 	}}
 	t0 := time.Now().Unix()
 	simply := &fakeSimply{aliveOTP: map[string]bool{otpFor(t0): true}}
@@ -288,14 +290,43 @@ func TestSign_NonCertFailure_NoRelogin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sign: %v", err)
 	}
-	if res.ExitCode != 1 {
-		t.Errorf("exit: %d", res.ExitCode)
+	defer os.RemoveAll(res.TmpDir)
+	if res.ExitCode != 0 {
+		t.Errorf("retry should succeed: %+v", res)
 	}
-	if signer.callCount() != 1 {
-		t.Errorf("signer calls: %d, want 1 (未重试)", signer.callCount())
+	if signer.callCount() != 2 {
+		t.Errorf("signer calls: %d, want 2", signer.callCount())
 	}
-	if got := atomic.LoadInt32(&simply.closeN); got != 0 {
-		t.Errorf("close calls: %d, want 0", got)
+	if got := atomic.LoadInt32(&simply.closeN); got != 1 {
+		t.Errorf("close calls: %d, want 1", got)
+	}
+}
+
+func TestSign_RetryStillFails_ReturnsSecondResult(t *testing.T) {
+	// 重登后第二次签名仍失败: 透传第二次结果, 不再继续重登.
+	signer := &fakeSigner{script: []fakeResult{
+		{exitCode: 1, stderr: "first failure"},
+		{exitCode: 2, stderr: "second failure"},
+	}}
+	t0 := time.Now().Unix()
+	simply := &fakeSimply{aliveOTP: map[string]bool{otpFor(t0): true}}
+	m := newManager(simply, signer)
+	src := writeFile(t, "hello")
+
+	release, _ := m.Reserve()
+	defer release()
+	res, err := m.Sign(context.Background(), src, nil, nil)
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	if res.ExitCode != 2 || res.StderrTail != "second failure" {
+		t.Errorf("want second failure result, got %+v", res)
+	}
+	if signer.callCount() != 2 {
+		t.Errorf("signer calls: %d, want 2 (只重试一次)", signer.callCount())
+	}
+	if got := atomic.LoadInt32(&simply.closeN); got != 1 {
+		t.Errorf("close calls: %d, want 1", got)
 	}
 }
 
