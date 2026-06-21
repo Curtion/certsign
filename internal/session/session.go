@@ -1,6 +1,5 @@
 // Package session 管理 SimplySign 会话: 惰性 autologin (三值 TOTP 容错),
-// singleflight 登录去重, 签名互斥, 证书缺失自动重登.
-// 无后台 keep-alive, 状态转换由 Sign 请求驱动.
+// singleflight 登录去重, 签名互斥, 证书缺失自动重登. 状态转换由 Sign 请求驱动.
 package session
 
 import (
@@ -47,12 +46,12 @@ var ErrOverloaded = errors.New("session: queue overloaded")
 // MaxQueue 是一个签名进行中时允许排队的最大请求数.
 const MaxQueue = 5
 
-// Signer is *signtool.Signer 的子集, 方便测试注入.
+// Signer 是 signtool.Signer 的子集, 方便测试注入.
 type Signer interface {
 	Sign(ctx context.Context, srcPath string, emit func(signtool.LogEvent)) (*signtool.Result, error)
 }
 
-// SimplySignClient 是 *simplysign.Manager 的子集, 方便测试注入 fake.
+// SimplySignClient 是 simplysign.Manager 的子集, 方便测试注入 fake.
 type SimplySignClient interface {
 	Autologin(ctx context.Context, otp string) (bool, error)
 	Close(ctx context.Context) error
@@ -120,7 +119,7 @@ func (m *Manager) tryAcquire() (release func(), err error) {
 	}, nil
 }
 
-// Reserve 是 tryAcquire 的公开入口, 供 HTTP 层做队列控制.
+// Reserve 预留队列槽位, 超限返回 ErrOverloaded.
 func (m *Manager) Reserve() (release func(), err error) {
 	return m.tryAcquire()
 }

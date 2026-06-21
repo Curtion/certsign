@@ -1,7 +1,5 @@
 // certsign-totp 打印当前 TOTP 值, 用于核对与 SimplySign 登录 OTP 是否一致.
 // 走与 server 相同的 config.Load → totp.ParseURI → totp.Generate 链路.
-//
-//	certsign-totp [-config ./config.toml] [-watch]
 package main
 
 import (

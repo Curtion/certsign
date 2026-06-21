@@ -1,9 +1,6 @@
 // Package simplysign 管理 Certum SimplySignDesktop.exe.
-//
-// Autologin 启动 /autologin 触发器进程, 在 SettleTimeout 窗口内观察存活状态.
-// 实测该进程即为常驻主进程: 登录成功永不退出, OTP 错误几秒后退出.
-// 因此判据: 进程在 settle 窗口内退出 = 失败; 存活到窗口结束 = 成功.
-// 用后台 goroutine reap (select 等待), 不再轮询进程表.
+// Autologin 启动 /autologin 进程, 在 SettleTimeout 窗口内观察存活: 进程退出=失败, 存活到窗口结束=成功.
+// 用后台 goroutine reap, 不再轮询进程表; 登录成功永驻不退出.
 package simplysign
 
 import (

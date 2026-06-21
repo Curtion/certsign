@@ -63,7 +63,6 @@ func Run(ctx context.Context, cfg config.ClientConfig, inputPath string, opts Op
 	return code
 }
 
-// sign 发起 HTTP 请求并处理响应流.
 func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath string, content []byte, server string) (int, error) {
 	buf := &bytes.Buffer{}
 	mw := multipart.NewWriter(buf)

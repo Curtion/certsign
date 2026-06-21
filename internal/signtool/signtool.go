@@ -94,7 +94,6 @@ func (s *Signer) Sign(ctx context.Context, srcPath string, emit func(LogEvent)) 
 		tail = appendTail(tail, line)
 	})
 
-	// 只转发 stdout.
 	scan(stdout, "stdout", emit, nil)
 
 	type waitOut struct{ err error }

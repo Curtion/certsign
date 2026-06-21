@@ -1,7 +1,4 @@
-// certsign - 客户端/服务端签名工具.
-//
-//	certsign [flags] <input-file>   # 客户端模式
-//	certsign serve [flags]          # 服务端模式
+// certsign 客户端/服务端签名工具.
 package main
 
 import (

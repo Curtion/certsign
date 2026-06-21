@@ -1,10 +1,4 @@
 // Package server 实现 certsign HTTP 服务端.
-//
-//	POST /sign     multipart/form-data → ndjson 流 + 签名后原始字节
-//	GET  /healthz  {"ok":true}
-//	GET  /readyz   {"ready":bool,"session":"<state>"}
-//
-// 队列满时返回 503 JSON (非 ndjson).
 package server
 
 import (
@@ -119,8 +113,6 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		"session": state.String(),
 	})
 }
-
-// ---------- /sign ----------
 
 func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

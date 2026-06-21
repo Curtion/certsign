@@ -13,14 +13,14 @@ import (
 	"certsign/internal/totp"
 )
 
-// ServerConfig holds the HTTP server settings.
+// ServerConfig HTTP 服务配置.
 type ServerConfig struct {
 	Bind  string `toml:"bind"`
 	Token string `toml:"token"`
 }
 
-// SimplySignConfig holds Certum SimplySign Desktop launch parameters.
-// SettleTimeout controls the /autologin settle window; zero uses internal default (10s).
+// SimplySignConfig Certum SimplySign Desktop 启动参数.
+// SettleTimeout 控制 /autologin 判定窗口; 零值使用内部默认值 (10s).
 type SimplySignConfig struct {
 	Exe           string `toml:"exe"`
 	Email         string `toml:"email"`
@@ -29,7 +29,7 @@ type SimplySignConfig struct {
 	TOTP          totp.Config `toml:"-"`
 }
 
-// SigningConfig holds signtool invocation parameters.
+// SigningConfig signtool 调用参数.
 type SigningConfig struct {
 	Thumbprint   string        `toml:"thumbprint"`
 	Signtool     string        `toml:"signtool"`
@@ -37,7 +37,7 @@ type SigningConfig struct {
 	Timeout      time.Duration `toml:"timeout"`
 }
 
-// ClientConfig holds the CLI client settings.
+// ClientConfig CLI 客户端配置.
 type ClientConfig struct {
 	Server  string        `toml:"server"`
 	Token   string        `toml:"token"`
@@ -52,10 +52,10 @@ type Config struct {
 	Client     ClientConfig     `toml:"client"`
 }
 
-// DefaultClientTimeout is used when [client] timeout is unset.
+// [client] timeout 未设置时的默认值.
 const DefaultClientTimeout = 10 * time.Minute
 
-// DefaultSigningTimeout is used when [signing] timeout is unset.
+// [signing] timeout 未设置时的默认值.
 const DefaultSigningTimeout = 10 * time.Minute
 
 // rawConfig 用 string 存 duration, TOML 原生 duration 支持有限.

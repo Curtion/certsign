@@ -36,7 +36,7 @@ func Generate(secret []byte, counter uint64, digits int) string {
 	sum := mac.Sum(nil)
 
 	offset := int(sum[len(sum)-1] & 0x0f)
-	// Dynamic truncation: 从 offset 取 4 字节, 屏蔽最高位.
+	// 动态截断: 从 offset 取 4 字节, 屏蔽最高位.
 	bin := (uint32(sum[offset])&0x7f)<<24 |
 		uint32(sum[offset+1])<<16 |
 		uint32(sum[offset+2])<<8 |
@@ -54,7 +54,7 @@ func At(secret []byte, cfg Config, t time.Time) string {
 	return Generate(secret, counter, cfg.Digits)
 }
 
-// Now returns the TOTP value for the current time.
+// Now 返回当前时刻的 TOTP 值.
 func Now(secret []byte, cfg Config) string {
 	return At(secret, cfg, time.Now())
 }
