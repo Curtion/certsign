@@ -40,7 +40,6 @@ func printOnce(t totp.Config, now time.Time) {
 	counter := uint64(now.Unix() / period)
 	remain := period - now.Unix()%period
 
-	fmt.Printf("config:        %s\n", t.Algorithm)
 	fmt.Printf("digits/period: %d / %ds\n", t.Digits, t.Period)
 	fmt.Printf("secret bytes:  %x (%d bytes)\n", t.Secret, len(t.Secret))
 	fmt.Printf("unix time:     %d\n", now.Unix())

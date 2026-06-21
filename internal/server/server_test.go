@@ -135,7 +135,7 @@ func setup(t *testing.T, script []fakeResult) (*httptest.Server, *fakeSigner, *f
 	}}
 	sm := session.New(simply, signer, totp.Config{
 		Secret: []byte("12345678901234567890123456789012"),
-		Digits: 6, Period: 30, Algorithm: "SHA256",
+		Digits: 6, Period: 30,
 	}, context.Background(), nil)
 	srv := server.New(config.ServerConfig{Bind: "127.0.0.1:0", Token: "tok"}, sm, nil)
 	ts := httptest.NewServer(srv.Handler())

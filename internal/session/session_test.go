@@ -124,7 +124,7 @@ func (f *fakeSimply) Close(ctx context.Context) error {
 func testSecret() []byte { return []byte("12345678901234567890123456789012") }
 
 func newManager(s SimplySignClient, signer Signer) *Manager {
-	return New(s, signer, totp.Config{Secret: testSecret(), Digits: 6, Period: 30, Algorithm: "SHA256"}, context.Background(), nil)
+	return New(s, signer, totp.Config{Secret: testSecret(), Digits: 6, Period: 30}, context.Background(), nil)
 }
 
 func writeFile(t *testing.T, body string) string {

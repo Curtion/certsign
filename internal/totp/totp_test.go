@@ -4,7 +4,6 @@ import (
 	"encoding/base32"
 	"strings"
 	"testing"
-	"time"
 )
 
 // RFC 6238 附录 B SHA-256 测试向量.
@@ -27,17 +26,6 @@ func TestGenerate_RFC6238SHA256(t *testing.T) {
 		got := Generate(secret, counter, 8)
 		if got != tc.code8 {
 			t.Errorf("counter=%d (t=%d): got %s, want %s", counter, tc.unix, got, tc.code8)
-		}
-	}
-}
-
-func TestAt_RFC6238SHA256(t *testing.T) {
-	secret := []byte("12345678901234567890123456789012")
-	cfg := Config{Secret: secret, Digits: 8, Period: 30, Algorithm: "SHA256"}
-	for _, tc := range rfc6238SHA256 {
-		got := At(secret, cfg, time.Unix(tc.unix, 0).UTC())
-		if got != tc.code8 {
-			t.Errorf("t=%d: got %s, want %s", tc.unix, got, tc.code8)
 		}
 	}
 }
@@ -72,9 +60,6 @@ func TestParseURI_Valid(t *testing.T) {
 	}
 	if cfg.Period != 30 {
 		t.Errorf("period: got %d, want 30", cfg.Period)
-	}
-	if cfg.Algorithm != "SHA256" {
-		t.Errorf("algorithm: got %q, want SHA256", cfg.Algorithm)
 	}
 	if cfg.Issuer != "Certum" {
 		t.Errorf("issuer: got %q, want Certum", cfg.Issuer)
@@ -134,14 +119,5 @@ func TestParseURI_Errors(t *testing.T) {
 				t.Errorf("error %q does not contain %q", err.Error(), tc.want)
 			}
 		})
-	}
-}
-
-func TestAt_SixDigitsStable(t *testing.T) {
-	secret := []byte("12345678901234567890123456789012")
-	cfg := Config{Digits: 6, Period: 30, Algorithm: "SHA256"}
-	got := At(secret, cfg, time.Unix(59, 0).UTC())
-	if got != "119246" {
-		t.Errorf("At(t=59, 6-digit): got %s, want 119246", got)
 	}
 }

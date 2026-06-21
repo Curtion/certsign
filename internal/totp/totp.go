@@ -11,16 +11,14 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"time"
 )
 
 // Config 保存从 otpauth URI 解析的 TOTP 参数.
 type Config struct {
-	Secret    []byte
-	Digits    int
-	Period    int
-	Issuer    string
-	Algorithm string // 始终 "SHA256"
+	Secret []byte
+	Digits int
+	Period int
+	Issuer string
 }
 
 // Generate 返回给定 counter 的 HOTP 值 (补零到 digits 位).
@@ -46,17 +44,6 @@ func Generate(secret []byte, counter uint64, digits int) string {
 	otp := new(big.Int).Mod(big.NewInt(int64(bin)), mod)
 
 	return fmt.Sprintf("%0*d", digits, otp)
-}
-
-// At 返回时间 t 对应的 TOTP 值.
-func At(secret []byte, cfg Config, t time.Time) string {
-	counter := uint64(t.Unix()) / uint64(cfg.Period)
-	return Generate(secret, counter, cfg.Digits)
-}
-
-// Now 返回当前时刻的 TOTP 值.
-func Now(secret []byte, cfg Config) string {
-	return At(secret, cfg, time.Now())
 }
 
 // ParseURI 解析 otpauth:// URI. 仅支持 totp + SHA256.
@@ -88,10 +75,9 @@ func ParseURI(raw string) (Config, error) {
 	}
 
 	cfg := Config{
-		Secret:    secret,
-		Digits:    6,
-		Period:    30,
-		Algorithm: "SHA256",
+		Secret: secret,
+		Digits: 6,
+		Period: 30,
 	}
 
 	if d := q.Get("digits"); d != "" {

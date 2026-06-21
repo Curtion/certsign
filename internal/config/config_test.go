@@ -69,9 +69,6 @@ func TestLoad_FullServerConfig(t *testing.T) {
 	if cfg.SimplySign.TOTP.Digits != 6 || cfg.SimplySign.TOTP.Period != 30 {
 		t.Errorf("totp not parsed: %+v", cfg.SimplySign.TOTP)
 	}
-	if cfg.SimplySign.TOTP.Algorithm != "SHA256" {
-		t.Errorf("algorithm: %q", cfg.SimplySign.TOTP.Algorithm)
-	}
 	if cfg.Client.Server != "https://signer.internal:8443" {
 		t.Errorf("client.server: %q", cfg.Client.Server)
 	}
