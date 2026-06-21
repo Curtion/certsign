@@ -44,8 +44,12 @@ jobs:
       - name: Build certsign
         run: |
           mkdir -p staging
-          # runner 原生平台 (GOOS=host), Windows 自动产出 certsign.exe.
-          go build -trimpath -o staging/certsign ./cmd/certsign
+          # 显式 -o 时 Go 不会自动追加 .exe, 需按平台拼后缀.
+          OUT="certsign"
+          if [[ "${{ matrix.goos }}" == "windows" ]]; then
+            OUT="certsign.exe"
+          fi
+          go build -trimpath -o "staging/$OUT" ./cmd/certsign
 
       - name: Rename example config to config.toml
         run: cp config.example.toml staging/config.toml
