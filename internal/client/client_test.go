@@ -119,7 +119,7 @@ func TestRun_HappyPath_OverwritesInput(t *testing.T) {
 	defer ts.Close()
 
 	in := writeInput(t, "PAYLOAD")
-	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{Quiet: true})
+	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{})
 	if code != client.ExitOK {
 		t.Fatalf("exit code: %d", code)
 	}
@@ -145,7 +145,7 @@ func TestRun_WritesToOutputPath(t *testing.T) {
 
 	in := writeInput(t, "DATA")
 	out := filepath.Join(filepath.Dir(in), "out.bin")
-	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{Output: out, Quiet: true})
+	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{Output: out })
 	if code != client.ExitOK {
 		t.Fatalf("exit code: %d", code)
 	}
@@ -163,7 +163,7 @@ func TestRun_ServerError_ReturnsCode2(t *testing.T) {
 	defer ts.Close()
 
 	in := writeInput(t, "DATA")
-	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{Quiet: true})
+	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{})
 	if code != client.ExitServerError {
 		t.Errorf("exit code: %d, want %d", code, client.ExitServerError)
 	}
@@ -180,7 +180,7 @@ func TestRun_Unauthorized_ReturnsCode1(t *testing.T) {
 	in := writeInput(t, "DATA")
 	cfg := basicCfg(ts.URL)
 	cfg.Token = "wrong"
-	code := client.Run(context.Background(), cfg, in, client.Options{Quiet: true})
+	code := client.Run(context.Background(), cfg, in, client.Options{})
 	if code != client.ExitLocalError {
 		t.Errorf("exit code: %d, want %d", code, client.ExitLocalError)
 	}
@@ -192,7 +192,7 @@ func TestRun_Overloaded_ReturnsCode2(t *testing.T) {
 	defer ts.Close()
 
 	in := writeInput(t, "DATA")
-	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{Quiet: true})
+	code := client.Run(context.Background(), basicCfg(ts.URL), in, client.Options{})
 	if code != client.ExitServerError {
 		t.Errorf("exit code: %d, want %d", code, client.ExitServerError)
 	}
@@ -201,7 +201,7 @@ func TestRun_Overloaded_ReturnsCode2(t *testing.T) {
 func TestRun_MissingInput_ReturnsCode1(t *testing.T) {
 	ts := httptest.NewServer((&fakeServer{t: t}).handler())
 	defer ts.Close()
-	code := client.Run(context.Background(), basicCfg(ts.URL), filepath.Join(t.TempDir(), "nope.bin"), client.Options{Quiet: true})
+	code := client.Run(context.Background(), basicCfg(ts.URL), filepath.Join(t.TempDir(), "nope.bin"), client.Options{})
 	if code != client.ExitLocalError {
 		t.Errorf("exit code: %d, want %d", code, client.ExitLocalError)
 	}
@@ -215,7 +215,7 @@ func TestRun_Timeout_ReturnsCode3(t *testing.T) {
 	in := writeInput(t, "DATA")
 	cfg := basicCfg(ts.URL)
 	cfg.Timeout = 50 * time.Millisecond
-	code := client.Run(context.Background(), cfg, in, client.Options{Quiet: true})
+	code := client.Run(context.Background(), cfg, in, client.Options{})
 	if code != client.ExitTimeout && code != client.ExitLocalError {
 		t.Errorf("exit code: %d, want timeout or local-error", code)
 	}

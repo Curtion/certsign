@@ -34,25 +34,24 @@ const (
 // Options 控制客户端行为.
 type Options struct {
 	Output   string // 输出路径, 空则覆盖输入
-	Quiet    bool
-	Insecure bool // 跳过 TLS 校验
+	Insecure bool   // 跳过 TLS 校验
 }
 
 // Run 上传签名并原子写入结果, 返回 Exit* 退出码.
 func Run(ctx context.Context, cfg config.ClientConfig, inputPath string, opts Options) int {
 	in, err := os.ReadFile(inputPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "certsign: 读取 %s 失败: %v\n", inputPath, err)
+		clientLog("读取 %s 失败: %v", inputPath, err)
 		return ExitLocalError
 	}
 
 	server := strings.TrimRight(cfg.Server, "/")
 	if server == "" {
-		fmt.Fprintln(os.Stderr, "certsign: 未配置 server 地址")
+		clientLog("未配置 server 地址")
 		return ExitLocalError
 	}
 	if cfg.Token == "" {
-		fmt.Fprintln(os.Stderr, "certsign: 未配置 token")
+		clientLog("未配置 token")
 		return ExitLocalError
 	}
 
@@ -85,19 +84,17 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 	// 上传进度条.
 	bodyLen := int64(buf.Len())
 	var bodyReader io.Reader = buf
-	if !opts.Quiet {
-		bar := progressbar.NewOptions64(bodyLen,
-			progressbar.OptionSetDescription("上传中..."),
-			progressbar.OptionSetWriter(os.Stderr),
-			progressbar.OptionSetWidth(20),
-			progressbar.OptionShowBytes(true),
-			progressbar.OptionThrottle(50*time.Millisecond),
-			progressbar.OptionOnCompletion(func() {
-				fmt.Fprintln(os.Stderr)
-			}),
-		)
-		bodyReader = io.TeeReader(buf, bar)
-	}
+	bar := progressbar.NewOptions64(bodyLen,
+		progressbar.OptionSetDescription("上传中..."),
+		progressbar.OptionSetWriter(os.Stderr),
+		progressbar.OptionSetWidth(20),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionThrottle(50*time.Millisecond),
+		progressbar.OptionOnCompletion(func() {
+			fmt.Fprintln(os.Stderr)
+		}),
+	)
+	bodyReader = io.TeeReader(buf, bar)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, server+"/sign", bodyReader)
 	if err != nil {
@@ -132,7 +129,7 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		if msg == "" {
 			msg = fmt.Sprintf("http %d", resp.StatusCode)
 		}
-		fmt.Fprintf(os.Stderr, "certsign: 服务器拒绝请求: %s\n", msg)
+		clientLog("服务器拒绝请求: %s", msg)
 		if resp.StatusCode == http.StatusUnauthorized {
 			return ExitLocalError, errors.New("unauthorized")
 		}
@@ -144,7 +141,6 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 	var artifact bytes.Buffer
 	artifact.Grow(len(content) + 1024)
 	var doneBytes int64 = -1
-	logOut := newLogWriter(opts.Quiet)
 
 	for doneBytes < 0 {
 		line, err := br.ReadBytes('\n')
@@ -160,11 +156,21 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		}
 		switch ev["type"] {
 		case "log":
-			logOut.write(ev["line"])
+			if l, ok := ev["line"].(string); ok {
+				serverLog("signtool", l)
+			}
 		case "status":
-			logOut.status(ev["phase"], ev["msg"])
+			phase, _ := ev["phase"].(string)
+			msg, _ := ev["msg"].(string)
+			label := phaseLabel(phase)
+			if msg != "" {
+				label += " " + msg
+			}
+			serverLog("status", label)
 		case "progress":
-			logOut.status(ev["label"], nil)
+			if l, ok := ev["label"].(string); ok {
+				serverLog("status", l)
+			}
 		case "done":
 			if v, ok := ev["bytes"].(float64); ok {
 				doneBytes = int64(v)
@@ -177,31 +183,29 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 					msg = truncate(t, 2000)
 				}
 			}
-			fmt.Fprintf(os.Stderr, "certsign: 服务器错误 (phase=%s): %s\n", phase, msg)
+			clientLog("服务器错误 (phase=%s): %s", phase, msg)
 			return ExitServerError, errors.New("server error")
 		}
 	}
 
 	if doneBytes < 0 {
-		fmt.Fprintln(os.Stderr, "certsign: 流在 done 事件之前意外结束")
+		clientLog("流在 done 事件之前意外结束")
 		return ExitServerError, errors.New("no done event")
 	}
 
 	// 下载进度条.
 	var artifactReader io.Reader = br
-	if !opts.Quiet {
-		bar := progressbar.NewOptions64(doneBytes,
-			progressbar.OptionSetDescription("下载中..."),
-			progressbar.OptionSetWriter(os.Stderr),
-			progressbar.OptionSetWidth(20),
-			progressbar.OptionShowBytes(true),
-			progressbar.OptionThrottle(50*time.Millisecond),
-			progressbar.OptionOnCompletion(func() {
-				fmt.Fprintln(os.Stderr)
-			}),
-		)
-		artifactReader = io.TeeReader(br, bar)
-	}
+	bar = progressbar.NewOptions64(doneBytes,
+		progressbar.OptionSetDescription("下载中..."),
+		progressbar.OptionSetWriter(os.Stderr),
+		progressbar.OptionSetWidth(20),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionThrottle(50*time.Millisecond),
+		progressbar.OptionOnCompletion(func() {
+			fmt.Fprintln(os.Stderr)
+		}),
+	)
+	artifactReader = io.TeeReader(br, bar)
 
 	if _, err := io.CopyN(&artifact, artifactReader, doneBytes); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded {
@@ -215,12 +219,10 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 		out = inputPath
 	}
 	if err := atomicWrite(out, artifact.Bytes()); err != nil {
-		fmt.Fprintf(os.Stderr, "certsign: 写入 %s 失败: %v\n", out, err)
+		clientLog("写入 %s 失败: %v", out, err)
 		return ExitWriteError, err
 	}
-	if !opts.Quiet {
-		fmt.Fprintf(os.Stderr, "certsign: 已签名 %s (%s)\n", out, formatBytes(int64(artifact.Len())))
-	}
+	clientLog("已签名 %s (%s)", out, formatBytes(int64(artifact.Len())))
 	return ExitOK, nil
 }
 
@@ -292,34 +294,15 @@ func phaseLabel(phase string) string {
 	}
 }
 
-// logWriter 按 --quiet 控制是否输出流式日志到 stderr.
-type logWriter struct {
-	quiet bool
+// clientLog 输出客户端自身日志, 带日期时间和 [client] 前缀.
+func clientLog(format string, args ...any) {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "%s [client] %s\n", ts, msg)
 }
 
-func newLogWriter(quiet bool) *logWriter {
-	return &logWriter{quiet: quiet}
-}
-
-func (w *logWriter) write(line any) {
-	if w.quiet {
-		return
-	}
-	l, _ := line.(string)
-	ts := time.Now().Format("15:04:05")
-	fmt.Fprintf(os.Stderr, "%s [signtool] %s\n", ts, l)
-}
-
-func (w *logWriter) status(label, msg any) {
-	if w.quiet || label == nil {
-		return
-	}
-	phase, _ := label.(string)
-	prefix := phaseLabel(phase)
-	ts := time.Now().Format("15:04:05")
-	if msg != nil {
-		fmt.Fprintf(os.Stderr, "%s [%s] %v\n", ts, prefix, msg)
-	} else {
-		fmt.Fprintf(os.Stderr, "%s [%s]\n", ts, prefix)
-	}
+// serverLog 输出服务端日志, 带日期时间、[server] 前缀和子前缀.
+func serverLog(sub, msg string) {
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	fmt.Fprintf(os.Stderr, "%s [server] [%s] %s\n", ts, sub, msg)
 }

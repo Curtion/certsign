@@ -71,7 +71,6 @@ func runClient(args []string) int {
 	token := fs.String("token", "", "Bearer token (覆盖配置文件; 环境变量 CERTSIGN_TOKEN)")
 	output := fs.String("output", "", "输出路径 (默认覆盖输入文件)")
 	timeout := fs.Duration("timeout", 0, "超时时间 (覆盖配置文件)")
-	quiet := fs.Bool("quiet", false, "静默模式, 不输出进度")
 	insecure := fs.Bool("insecure", false, "跳过 TLS 证书校验")
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, "用法: certsign [flags] <input-file>")
@@ -88,7 +87,7 @@ func runClient(args []string) int {
 	// 客户端模式不需要 [signing] thumbprint.
 	cfg, err := config.Load(*configPath, false)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "certsign: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%s certsign: %v\n", time.Now().Format("2006-01-02 15:04:05"), err)
 		return 1
 	}
 	clientCfg := config.ResolveClient(cfg, config.ClientOverrides{
@@ -99,7 +98,6 @@ func runClient(args []string) int {
 
 	opts := client.Options{
 		Output:   *output,
-		Quiet:    *quiet,
 		Insecure: *insecure,
 	}
 	return client.Run(context.Background(), clientCfg, input, opts)
