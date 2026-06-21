@@ -1,0 +1,99 @@
+name: release
+
+# 推送 v* tag 时构建多平台二进制并发布到对应 tag 的 GitHub Release.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write  # 发布 release / 上传 asset 需要
+
+jobs:
+  build:
+    name: build (${{ matrix.goos }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            goos: windows
+            archive: zip
+          - runner: ubuntu-latest
+            goos: linux
+            archive: tar.gz
+          - runner: macos-latest
+            goos: darwin
+            archive: tar.gz
+    defaults:
+      run:
+        shell: bash  # windows-latest 走 Git Bash, 三个平台脚本统一
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build certsign
+        run: |
+          mkdir -p staging
+          # runner 原生平台 (GOOS=host), Windows 自动产出 certsign.exe.
+          go build -trimpath -o staging/certsign ./cmd/certsign
+
+      - name: Rename example config to config.toml
+        run: cp config.example.toml staging/config.toml
+
+      - name: Package
+        run: |
+          ASSET="certsign_${GITHUB_REF_NAME}_${{ matrix.goos }}_amd64.${{ matrix.archive }}"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            7z a "$ASSET" ./staging/*
+          else
+            tar -czf "$ASSET" -C staging .
+          fi
+          echo "ASSET=$ASSET" >> "$GITHUB_ENV"
+
+      - name: List archive contents
+        run: |
+          echo "=== $ASSET ==="
+          if [[ "$ASSET" == *.zip ]]; then 7z l "$ASSET"; else tar -tzf "$ASSET"; fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: certsign-${{ matrix.goos }}
+          path: certsign_*_${{ matrix.goos }}_amd64.${{ matrix.archive }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true  # 三个 artifact 平铺到同一目录
+
+      - name: List downloaded assets
+        run: ls -l dist
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
