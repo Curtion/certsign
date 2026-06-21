@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"certsign/internal/config"
 )
@@ -38,6 +40,7 @@ type Signer struct {
 	exe          string
 	thumbprint   string
 	timestampURL string
+	timeout      time.Duration
 }
 
 func New(cfg config.SigningConfig) *Signer {
@@ -45,11 +48,18 @@ func New(cfg config.SigningConfig) *Signer {
 		exe:          cfg.Signtool,
 		thumbprint:   cfg.Thumbprint,
 		timestampURL: cfg.TimestampURL,
+		timeout:      cfg.Timeout,
 	}
 }
 
 // Sign 对 srcPath 签名, emit 实时接收 stdout/stderr 行.
 func (s *Signer) Sign(ctx context.Context, srcPath string, emit func(LogEvent)) (*Result, error) {
+	// [signing] timeout 兜底, 避免子进程卡死无界占用 signMu.
+	if s.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, s.timeout)
+		defer cancel()
+	}
 	tmpDir, err := os.MkdirTemp("", "certsign-*")
 	if err != nil {
 		return nil, fmt.Errorf("signtool: 创建临时目录失败: %w", err)
@@ -87,17 +97,26 @@ func (s *Signer) Sign(ctx context.Context, srcPath string, emit func(LogEvent)) 
 		return nil, fmt.Errorf("signtool: 启动失败: %w", err)
 	}
 
-	// 捕获 stderr 尾部, 同时转发.
+	// 并发读两路 pipe, 避免 OS pipe buffer 满导致死锁. tail 仅由 stderr
+	// goroutine 写, 主流程在 wg.Wait 后读, 无需加锁.
 	var tail []byte
-	scan(stderr, "stderr", emit, func(line string) {
-		tail = appendTail(tail, line)
-	})
-
-	scan(stdout, "stdout", emit, nil)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		scan(stderr, "stderr", emit, func(line string) {
+			tail = appendTail(tail, line)
+		})
+	}()
+	go func() {
+		defer wg.Done()
+		scan(stdout, "stdout", emit, nil)
+	}()
 
 	type waitOut struct{ err error }
 	waitCh := make(chan waitOut, 1)
 	go func() {
+		wg.Wait()
 		waitCh <- waitOut{cmd.Wait()}
 	}()
 
