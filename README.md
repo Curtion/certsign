@@ -1,5 +1,7 @@
 # 说明
 
+> 警告: 当前程序完全由`GLM 5.2`生成, 可能存在错误或者不合理的地方, 请谨慎使用.
+
 针对`Certum 云代码证书`签名的一个服务, 方便在CI/CD环境中进行自动化签名.
 
 [原理参考](https://www.devas.life/how-to-automate-signing-your-windows-app-with-certum/)
