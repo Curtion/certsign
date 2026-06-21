@@ -36,12 +36,12 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/sign", s.handleSign)
 	mux.HandleFunc("/healthz", s.handleHealthz)
-	mux.HandleFunc("/readyz", s.handleReadyz)
 	return s.withLogging(mux)
 }
 
 // Run 启动 HTTP 服务, 阻塞直到 ctx 取消, 优雅关闭后清理会话.
-func (s *Server) Run(ctx context.Context, shutdownTimeout time.Duration) error {
+func (s *Server) Run(ctx context.Context) error {
+	const shutdownTimeout = 10 * time.Minute
 	srv := &http.Server{
 		Addr:              s.cfg.Bind,
 		Handler:           s.Handler(),
@@ -104,14 +104,6 @@ func (s *Server) withLogging(h http.Handler) http.Handler {
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-}
-
-func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
-	state := s.sm.State()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ready":   state == session.LoggedIn,
-		"session": state.String(),
-	})
 }
 
 func (s *Server) handleSign(w http.ResponseWriter, r *http.Request) {

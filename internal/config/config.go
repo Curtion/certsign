@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -87,6 +88,13 @@ type rawConfig struct {
 func Load(path string, parseServer bool) (Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if !parseServer && errors.Is(err, os.ErrNotExist) {
+			return Config{
+				Client: ClientConfig{
+					Timeout: DefaultClientTimeout,
+				},
+			}, nil
+		}
 		return Config{}, fmt.Errorf("config: read %s: %w", path, err)
 	}
 

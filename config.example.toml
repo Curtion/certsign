@@ -1,0 +1,26 @@
+[server]
+bind = "0.0.0.0:8000"
+# HTTP服务端授权令牌，客户端请求时需要提供此令牌以进行身份验证
+token = "your-server-token-here"
+
+[simplysign]
+exe = 'C:\Program Files\Certum\SimplySign Desktop\SimplySignDesktop.exe'
+email = "your-email@example.com"
+# Certum证书二维码内容
+totp_uri = "otpauth://totp/Certum%3Aemail%40example.com?secret=YOURSECRETKEYHERE&issuer=Certum&algorithm=SHA256&digits=6&period=30"
+settle_timeout = "10s"
+
+[signing]
+# 证书指纹
+thumbprint = "your-certificate-thumbprint"
+# 代码签名工具路径，确保路径正确且工具可用, 安装 Windows SDK 或者 https://github.com/Delphier/SignTool 下载
+signtool = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe'
+# 时间戳服务器URL
+timestamp_url = "http://timestamp.sectigo.com"
+timeout = "10m"
+
+[client]
+server = "http://127.0.0.1:8000"
+# HTTP客户端授权令牌，必须与服务器端的token值相匹配
+token = "your-server-token-here"
+timeout = "10m"

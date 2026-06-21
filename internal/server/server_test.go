@@ -409,20 +409,3 @@ func TestHealthz(t *testing.T) {
 		t.Errorf("body: %v", m)
 	}
 }
-
-func TestReadyz_InitiallyNotReady(t *testing.T) {
-	ts, _, _, _ := setup(t, nil)
-	resp, err := http.Get(ts.URL + "/readyz")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var m map[string]any
-	json.NewDecoder(resp.Body).Decode(&m)
-	if m["ready"] != false {
-		t.Errorf("ready should be false before login: %v", m)
-	}
-	if m["session"] != "Uninit" {
-		t.Errorf("session: %v", m["session"])
-	}
-}

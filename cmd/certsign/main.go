@@ -19,8 +19,6 @@ import (
 	"certsign/internal/simplysign"
 )
 
-const defaultShutdownTimeout = 5 * time.Minute
-
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "serve" {
 		os.Exit(runServe(os.Args[2:]))
@@ -35,7 +33,6 @@ func newLogger() *slog.Logger {
 func runServe(args []string) int {
 	fs := flag.NewFlagSet("certsign serve", flag.ExitOnError)
 	configPath := fs.String("config", "./config.toml", "配置文件路径")
-	shutdownTimeout := fs.Duration("shutdown-timeout", defaultShutdownTimeout, "优雅关闭超时")
 	fs.Parse(args)
 
 	logger := newLogger()
@@ -57,7 +54,7 @@ func runServe(args []string) int {
 	sm := session.New(simply, signer, cfg.SimplySign.TOTP, ctx, logger)
 
 	srv := server.New(cfg.Server, sm, logger)
-	if err := srv.Run(ctx, *shutdownTimeout); err != nil {
+	if err := srv.Run(ctx); err != nil {
 		logger.Error("服务端异常退出", "err", err)
 		return 1
 	}
