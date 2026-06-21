@@ -1,6 +1,6 @@
 # 说明
 
-针对`Certum 云代码证书`签名的一个服务, 提供一个HTTP接口, 供用户上传文件进行签名.
+针对`Certum 云代码证书`签名的一个服务, 方便在CI/CD环境中进行自动化签名.
 
 [原理参考](https://www.devas.life/how-to-automate-signing-your-windows-app-with-certum/)
 
