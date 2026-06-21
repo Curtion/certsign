@@ -37,7 +37,6 @@ type Options struct {
 
 // Run 上传签名并原子写入结果, 返回 Exit* 退出码.
 func Run(ctx context.Context, cfg config.ClientConfig, inputPath string, opts Options) int {
-	// 先完整读取, 后续覆盖写入才安全.
 	in, err := os.ReadFile(inputPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "certsign: 读取 %s 失败: %v\n", inputPath, err)
@@ -199,11 +198,6 @@ func atomicWrite(dst string, data []byte) error {
 	tmpName := tmp.Name()
 	cleanup := func() { os.Remove(tmpName) }
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		cleanup()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
 		tmp.Close()
 		cleanup()
 		return err

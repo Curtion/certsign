@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 
 	"certsign/internal/config"
 )
@@ -89,31 +88,24 @@ func (s *Signer) Sign(ctx context.Context, srcPath string, emit func(LogEvent)) 
 		return nil, fmt.Errorf("signtool: 启动失败: %w", err)
 	}
 
-	// mutex 序列化 emit 和 tail 更新.
-	var mu sync.Mutex
+	// 捕获 stderr 尾部, 同时转发.
 	var tail []byte
-
-	type waitOut struct{ err error }
-	waitCh := make(chan waitOut, 1)
-
-	// 转发 stderr 并捕获尾部.
-	scan(stderr, "stderr", emit, &mu, func(line string) {
+	scan(stderr, "stderr", emit, func(line string) {
 		tail = appendTail(tail, line)
 	})
 
 	// 只转发 stdout.
-	var stdoutSink func(string)
-	scan(stdout, "stdout", emit, &mu, stdoutSink)
+	scan(stdout, "stdout", emit, nil)
 
+	type waitOut struct{ err error }
+	waitCh := make(chan waitOut, 1)
 	go func() {
 		waitCh <- waitOut{cmd.Wait()}
 	}()
 
 	w := <-waitCh
 
-	mu.Lock()
 	tailStr := string(tail)
-	mu.Unlock()
 
 	res := &Result{StderrTail: tailStr, TmpDir: tmpDir}
 
@@ -139,25 +131,21 @@ func (s *Signer) Sign(ctx context.Context, srcPath string, emit func(LogEvent)) 
 	return res, nil
 }
 
-// scan 逐行读取并转发, 在 mu 下调用 emit 和 sink.
-func scan(r io.Reader, stream string, emit func(LogEvent), mu *sync.Mutex, sink func(string)) {
+// scan 逐行读取并转发, 通过 sink 回调收集数据.
+func scan(r io.Reader, stream string, emit func(LogEvent), sink func(string)) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 64*1024), 1024*1024)
 	for sc.Scan() {
 		line := sc.Text()
-		mu.Lock()
 		if emit != nil {
 			emit(LogEvent{Stream: stream, Line: line})
 		}
 		if sink != nil {
 			sink(line)
 		}
-		mu.Unlock()
 	}
 	if err := sc.Err(); err != nil && emit != nil {
-		mu.Lock()
 		emit(LogEvent{Stream: stream, Line: fmt.Sprintf("signtool: 扫描输出失败: %v", err)})
-		mu.Unlock()
 	}
 }
 
@@ -182,10 +170,8 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
-	}
-	return out.Sync()
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // MatchCertMissing 判断 stderr 尾部是否含证书缺失特征.

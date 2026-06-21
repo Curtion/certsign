@@ -17,9 +17,6 @@ import (
 type ServerConfig struct {
 	Bind  string `toml:"bind"`
 	Token string `toml:"token"`
-	// Cert/Key are optional TLS material (future).
-	Cert string `toml:"cert"`
-	Key  string `toml:"key"`
 }
 
 // SimplySignConfig holds Certum SimplySign Desktop launch parameters.
@@ -66,8 +63,6 @@ type rawConfig struct {
 	Server struct {
 		Bind  string `toml:"bind"`
 		Token string `toml:"token"`
-		Cert  string `toml:"cert"`
-		Key   string `toml:"key"`
 	} `toml:"server"`
 	Simplysign struct {
 		Exe           string `toml:"exe"`
@@ -104,8 +99,6 @@ func Load(path string, parseServer bool) (Config, error) {
 		Server: ServerConfig{
 			Bind:  raw.Server.Bind,
 			Token: raw.Server.Token,
-			Cert:  raw.Server.Cert,
-			Key:   raw.Server.Key,
 		},
 		SimplySign: SimplySignConfig{
 			Exe:     raw.Simplysign.Exe,

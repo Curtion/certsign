@@ -115,9 +115,7 @@ func (m *Manager) tryAcquire() (release func(), err error) {
 	m.mu.Unlock()
 	return func() {
 		m.mu.Lock()
-		if m.inflight > 0 {
-			m.inflight--
-		}
+		m.inflight--
 		m.mu.Unlock()
 	}, nil
 }

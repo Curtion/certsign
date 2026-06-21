@@ -39,9 +39,6 @@ func main() {
 
 func printOnce(t totp.Config, now time.Time) {
 	period := int64(t.Period)
-	if period <= 0 {
-		period = 30
-	}
 	counter := uint64(now.Unix() / period)
 	remain := period - now.Unix()%period
 
