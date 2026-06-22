@@ -15,7 +15,7 @@ import (
 )
 
 // DefaultSettleTimeout 是判定登录成功的默认 settle 窗口.
-const DefaultSettleTimeout = 10 * time.Second
+const DefaultSettleTimeout = 20 * time.Second
 
 // Manager 管理 SimplySign 会话的启动和关闭.
 type Manager struct {
