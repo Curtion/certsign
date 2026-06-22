@@ -6,6 +6,10 @@
 
 [原理参考](https://www.devas.life/how-to-automate-signing-your-windows-app-with-certum/)
 
+软件分为两服务端和客户端:
+ - 服务端运行在一台`Windows`机器上, 用于自动登录`SimplySign`、对外提供`HTTP`接口、调用`signtool`为软件签名。
+ - 服务端为命令行工具, 支持`MacOS`、`Windows`和`Linux`, 用于上传文件, 调用`HTTP`接口, 原地回写文件。如果无法使用命令行也可以根据[API](docs/api.md)协议自定义客户端。
+
 # 使用方式
 
 ## 服务端
