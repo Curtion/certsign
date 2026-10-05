@@ -1,4 +1,4 @@
-// Package client 实现 CLI 客户端: 上传文件, 流式解析 ndjson 事件, 原子替换输出.
+// Package client 实现 CLI 客户端: 上传文件, 流式解析 ndjson 事件, 回写签名结果.
 package client
 
 import (
@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -37,7 +38,7 @@ type Options struct {
 	Insecure bool   // 跳过 TLS 校验
 }
 
-// Run 上传签名并原子写入结果, 返回 Exit* 退出码.
+// Run 上传签名并写入结果, 返回 Exit* 退出码.
 func Run(ctx context.Context, cfg config.ClientConfig, inputPath string, opts Options) int {
 	in, err := os.ReadFile(inputPath)
 	if err != nil {
@@ -214,7 +215,7 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 	if out == "" {
 		out = inputPath
 	}
-	if err := atomicWrite(out, artifact.Bytes()); err != nil {
+	if err := writeOutput(out, artifact.Bytes()); err != nil {
 		clientLog("写入 %s 失败: %v", out, err)
 		return ExitWriteError, err
 	}
@@ -222,8 +223,8 @@ func sign(ctx context.Context, cfg config.ClientConfig, opts Options, inputPath 
 	return ExitOK, nil
 }
 
-// atomicWrite 先写临时文件再 rename, 防止写入中断导致文件损坏.
-func atomicWrite(dst string, data []byte) error {
+// Windows 原位回写不保证原子性, 回写失败时尝试恢复备份.
+func writeOutput(dst string, data []byte) error {
 	dir := filepath.Dir(dst)
 	tmp, err := os.CreateTemp(dir, ".certsign-*.tmp")
 	if err != nil {
@@ -241,10 +242,65 @@ func atomicWrite(dst string, data []byte) error {
 		return err
 	}
 	if err := os.Rename(tmpName, dst); err != nil {
+		if runtime.GOOS == "windows" && errors.Is(err, os.ErrPermission) {
+			clientLog("目标文件无法替换, 尝试原位回写: %s", dst)
+			return overwriteExisting(dst, data, tmpName)
+		}
 		cleanup()
 		return err
 	}
 	return nil
+}
+
+func overwriteExisting(dst string, data []byte, backupPath string) error {
+	keepBackup := false
+	defer func() {
+		if !keepBackup {
+			os.Remove(backupPath)
+		}
+	}()
+	file, err := os.OpenFile(dst, os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	backup, err := os.OpenFile(backupPath, os.O_RDWR|os.O_TRUNC, 0)
+	if err != nil {
+		return err
+	}
+	defer backup.Close()
+	if _, err := io.Copy(backup, file); err != nil {
+		return err
+	}
+	if err := backup.Sync(); err != nil {
+		return err
+	}
+	if err := copyContents(file, bytes.NewReader(data)); err != nil {
+		_, restoreErr := backup.Seek(0, io.SeekStart)
+		if restoreErr == nil {
+			restoreErr = copyContents(file, backup)
+		}
+		if restoreErr != nil {
+			keepBackup = true
+			return fmt.Errorf("原位回写失败: %w; 恢复失败: %v; 原文件备份保留在 %s", err, restoreErr, backupPath)
+		}
+		return fmt.Errorf("原位回写失败, 原文件已恢复: %w", err)
+	}
+	return nil
+}
+
+func copyContents(dst *os.File, src io.Reader) error {
+	if _, err := dst.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	n, err := io.Copy(dst, src)
+	if err != nil {
+		return err
+	}
+	if err := dst.Truncate(n); err != nil {
+		return err
+	}
+	return dst.Sync()
 }
 
 // truncate keeps only the last n bytes of s.
